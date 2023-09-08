@@ -1,0 +1,186 @@
+*************************************************
+*************************************************
+*              Trabajo Andres                   *
+*          Cluster - GEIH 2022:2023 mayo        *
+*************************************************
+*************************************************
+*By: Nicolás García Peñaloza
+*+57 3122852823
+*nicolasgp0109@gmail.com
+
+** GEIH 2022 Fuente: https://microdatos.dane.gov.co/index.php/catalog/771
+** GEIH 2022 Fuente: https://microdatos.dane.gov.co/index.php/catalog/782/study-description
+
+clear all
+set dp comma
+
+
+cd "C:\Users\nicol.NICOLAS_GP\OneDrive\Escritorio\Portafolio\My Work\Extra\Andrés Aristizabal\Data"
+
+import excel "C:\Users\nicol.NICOLAS_GP\OneDrive\Escritorio\Portafolio\My Work\Extra\Andrés Aristizabal\Data\SECTORES.xlsx", sheet("Sheet1") firstrow clear
+
+save SECTORES, replace
+
+use "C:\Users\nicol.NICOLAS_GP\OneDrive\Escritorio\Portafolio\My Work\Extra\Andrés Aristizabal\Data\GEIH_2022_2023_mayo.dta", clear
+
+
+d RAMA4D_R4
+
+tab RAMA4D_R4, missing
+
+destring RAMA4D_R4, ignore(`NA') force replace
+
+recast double RAMA4D_R4
+
+rename RAMA4D_R4 COD_CIIU
+
+merge m:1 COD_CIIU using "SECTORES.dta" 
+
+d AREA
+
+keep if AREA == 63 & OCI == "1"
+
+tab MES YEAR
+
+tab Clase, missing
+
+encode Clase, gen(CLAS)
+
+tab CLAS, missing
+
+drop if missing(CLAS)
+
+sort CLAS
+
+
+***** NÚMERO DE OCUPADOS
+
+tab MES Clase [ iw = FEX_C18 ] if YEAR == 2022
+
+tab MES Clase [ iw = FEX_C18 ] if YEAR == 2023
+
+destring INGLABO, ignore(`NA') force replace
+
+
+**** SALARIOS
+display "EN EL RESUMEN DE LOS INGRESOS AL APLICAR EL FACTOR DE EXPANCIÓN EN LA MEDIA NO ME TOMA LOS VALORES PERDIDOS, ES DECIR AQUELLOS QUE REPORTAN NO TENER UN INGRESO NO SE TOMA ENCUENTA EN LA MEDIA BAJO LA INTERACIÓN DE STATA."
+
+br INGLABO Clase CLAS FEX_C18
+
+summarize INGLABO , detail
+
+format INGLABO %22.0fc
+
+
+forval Andres =  2022/2023 {
+forval Aristizabal =  1/12 {
+	display "Año "  `Andres' " Mes " `Aristizabal'
+	by CLAS: summarize INGLABO [w = FEX_C18 ] if (MES == `Aristizabal' & YEAR == `Andres' ), detail format
+	di 
+}
+}
+
+
+** CARACTERÍSTICAS GENERALES
+forval Andres =  2022/2023 {
+forval Aristizabal =  1/12 {
+	display "Año "  `Andres' " Mes " `Aristizabal'
+	by CLAS: summarize P6040 [w = FEX_C18 ] if ( MES == `Aristizabal' & YEAR == `Andres' ), detail format
+	di 
+}
+ }
+
+*** NIVEL EDUCATIVO
+*chartab
+*charlist 
+*ssc describe c
+*ssc install chartab
+
+replace P3043 = "0" if P3043=="NA"
+
+destring P3043, replace
+
+label define TA 0 "No informa" 1 "Ninguno" 2 "Bachillerato Clásico" 3 "Bachillerato Técnico" 4 "Normalista" 5 "Técnica Profesional" 6 "Tecnológica" 7 "Universitaria" 8 "Especialización" 9 "Maestría" 10 "Doctorado"
+
+label dir
+
+label values P3043 TA
+
+label var P3043 "¿Cuál es el título o diploma  de mayor nivel educativo que ha recibido...?"
+
+set dp period
+
+forval Andres =  2022/2023 {
+forval Aristizabal =  1/12 {
+	display "Año "  `Andres' " Mes " `Aristizabal'
+	tabulate CLAS P3043 [ iw = FEX_C18 ] if ( MES == `Aristizabal' & YEAR == `Andres' ), nofreq row
+	di 
+}
+}
+
+set dp comma
+
+
+** EXPERIENCIA
+label var P6426 "¿cuanto tiempo lleva ... Trabajando en esta empresa, negocio, industria, oficina, firma o finca de manera continua? - Meses"
+
+br P6426
+
+tab P6426, missing
+
+destring P6426, replace
+
+gen double EXPERIENCIA_ANUAL = P6426/12
+
+
+by CLAS: summarize EXPERIENCIA_ANUAL [w = FEX_C18 ] if ( MES == 1 & YEAR == 2022 ), detail
+
+forval Andres =  2022/2023 {
+forval Aristizabal =  1/12 {
+	display "Año "  `Andres' " Mes " `Aristizabal'
+	by CLAS: summarize EXPERIENCIA_ANUAL [w = FEX_C18 ] if ( MES == `Aristizabal' & YEAR == `Andres' ), detail
+	di 
+}
+}
+
+
+
+*** ANOVA PARA DIFERENCIAS ENTRE LOS INGRESOS POR SECTORES
+*Encontrar diferencia engtre medias
+*Grupos: 1 (Café) 2 (Muebles) 3 (Tic) 4 (Construccion) 5 (turismo) 6 (salud)
+*Hipotesis Nula u_1 = u_2 = u_3 = u_4 = u_5
+
+display "Vamos a aplicarlos sobre el agregado del año"
+
+gen double FEX_ANUAL = FEX_C18/12
+
+display "Primero aplicamos una prueba de Shapiro Wilk para determinar si hay distribución normal"
+
+*El test de Shapiro-Wilk: evalúa si los datos siguen una distribución normal.
+*La asimetría (skewness): mide la falta de simetría en la distribución de los datos.
+
+tab CLAS
+tab CLAS, nolabel
+
+decode CLAS, gen(CLAS_STRING) 
+
+tab CLAS_STRING, gen(DUMMY_CLAS_)
+
+expand FEX_ANUAL 
+
+
+*Por construcción tomamos la skewness ya que se aplica el factor de expanción
+
+*sktest INGLABO [w = FEX_C18 ] if ( MES == 1 & YEAR == 2022 & CLAS == 1)
+**https://www.youtube.com/watch?v=dDT-wsNwUK0
+
+forval Andres =  2022/2023 {
+forval Toro = 1/6 {
+	display "Año "  `Andres' " CLASE " `Toro'
+	swilk /*sktest*/ INGLABO if (YEAR == `Andres' & DUMMY_CLAS_`Toro' == 1 )
+	di 
+}
+}
+
+display "Para aplicar una medición de varianza de medias (ANOVA) significativas debe ser sobre una distribución probabilistica normal en las clases, al aplicar las pruebas de shapiro wilk se encuentra que no hay normalidad en las distribuciones"
+
